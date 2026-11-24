@@ -7,22 +7,67 @@
 
 ---
 
-## 一、MVP 与 Part A 方案核心对应关系（对应提交规则第 7 条）
+## 一、MVP 与 Part A 方案的核心对应关系与实现边界（对应规则第 7 条）
 
-Part B MVP 直接代码化落地了 Part A 方案（`docs/AI研发团队组建方案.md`）中最核心的 **“确定性编排器 + 多级质量门禁 + 防卡死熔断回滚 + 人工 Review 准入”** 闭环：
+### 1.1 MVP 实现的最核心环节
 
-| Part A 方案章节与核心设计 | Part B MVP 落地实现文件与机制 | 本次真实模型（`deepseek-flash`）实测验证结果 |
+Part A 方案（`docs/AI研发团队组建方案.md`）覆盖了 7 个章节的完整团队转型蓝图，而 **Part B MVP 聚焦落地其中最核心、最易失控的单一闭环——Part A 第 4 章「确定性 FSM 编排 + 多级质量门禁 + 失败自修复/熔断回滚 + 人工 Review 准入」**，并以爱云动“赛事影像上传与号码布 OCR 巡检工具”作为具体业务载体。
+
+### 1.2 逐章对应与“已实现 vs 未实现”边界表
+
+为避免“把原型吹成生产系统”，下表明确区分 MVP **已代码化验证**的部分与**尚未落地、仅存在于方案设计**的边界：
+
+| Part A 方案章节 | MVP 已落地实现（文件与机制） | MVP 尚未覆盖的边界（坦诚声明） |
 | :--- | :--- | :--- |
-| **第 1 章 · 角色配置（编写权与验收权分离）** | `mvp/orchestrator/agents.py` 拆分为 `SpecAnalyzerAgent`、`CoderAgent`（路径强限制在 `src/`）、`ReporterAgent`，验收权交由只读测试与确定性门禁 | 单元测试验证篡改只读测试目录直接拦截（`ANTI-TAMPER-001`）；实测中 `CoderAgent` 仅修改 `src/race_media_inspector.py` |
-| **第 2 章 · 确定性编排器 + 国内模型路由 + 压缩上下文** | `mvp/orchestrator/engine.py` 实现纯 Python FSM 状态机；`llm_client.py` 对齐 DeepSeek 最新官方模型 ID（`deepseek-flash` / `deepseek-v4-pro`）与峰谷计费；失败回溯截断至 2,800 字符 | 状态机按 `INIT → ANALYZING_SPEC → GATING → REPAIRING → AWAITING_HUMAN_REVIEW / ESCALATED_TO_HUMAN` 确定性流转 |
-| **第 3 章 · 爱云动 6 系统业务与隐私合规知识** | `mvp/scenarios/repair_demo/` 落地爱云动“赛事影像上传与号码布 OCR 巡检”工具，固化 `opt_out` 下架拦截、手机号与签名 URL Token 脱敏、脏日志容错规则 | `deepseek-flash` 首轮即准确理解需求并补全全部 3 项合规/容错缺陷 |
-| **第 4 章 · 六级质量门禁与防卡死熔断兜底（核心）** | `quality_gate.py`（Gate 1 AST 安全扫描 + 密钥扫描 + 防作弊哈希校验；Gate 2 隔离 `pytest` 超时执行）+ `git_sandbox.py`（特性分支 + 自动回滚）+ `engine.py`（`max_retries`、`DUPLICATE_ERROR_FINGERPRINT`、`token_budget`） | ① `repair_demo` 从 `2/5` 首轮自动修复至 `5/5`；② `escalation_demo` 坚守隐私红线触发 `DUPLICATE_ERROR_FINGERPRINT` 熔断并自动 `git reset --hard` 回滚至 `89c33e4` |
-| **第 5/6 章 · 评估度量与 Token 人民币成本统计** | `state.py` & `llm_client.py` 精确读取 API 返回的 `prompt_tokens`、`completion_tokens`、`prompt_cache_hit_tokens`，按 DeepSeek 官方峰谷费率核算人民币 | 真实跑完两个完整场景共消耗 **38,076 Tokens**，高峰时段总费用仅 **¥0.221634**（约 2 毛 2 分） |
-| **第 7 章 · 风险与红线（强制人审 / 零生产权限）** | 沙箱无生产凭据、仅操作本地特性分支 `agent/*`；Gate 1 拦截 `eval`/`os.system`/硬编码密钥/生产库 URL；终态严格停留在 `AWAITING_HUMAN_REVIEW` | 安全单测 `4/4` 全过；`ReporterAgent` 明确提示未合并未部署并列出 8 项人工核查清单 |
+| **第 1 章 · 角色配置（编写权与验收权分离）** | `agents.py` 拆分为 `SpecAnalyzer`、`Coder`（路径强限制在 `src/`）、`Reporter`；验收测试物理只读隔离 | 未实现真实多角色并行调度与 QA Agent 自动生成候选测试用例入库流程 |
+| **第 2 章 · 确定性编排 + 模型路由 + 上下文管理** | `engine.py` 实现纯 Python FSM 状态机；`llm_client.py` 对齐 DeepSeek 最新模型 ID（`deepseek-flash` / `deepseek-v4-pro`）并实现失败回溯截断（≤2,800 字符） | 尚未实现“首轮失败自动从 `deepseek-flash` 升级至 `deepseek-v4-pro`”的动态分级路由；未实现多仓库 AST 符号图谱（Repo Map） |
+| **第 3 章 · 存量 6 系统知识工程** | `scenarios/repair_demo/` 固化爱云动赛事巡检的 `opt_out` 下架拦截、手机号/URL Token 脱敏与脏行容错规则 | 仅覆盖单个独立内部工具脚本，未接入真实存量遗留系统的跨表 Schema 与历史 Bug 库自动同步 |
+| **第 4 章 · 六级质量门禁与防卡死熔断（核心）** | `quality_gate.py`（Gate 1 静态/AST 安全/密钥扫描/只读测试 SHA-256 防作弊；Gate 2 隔离 `pytest` 超时执行）+ `git_sandbox.py`（特性分支 + 自动回滚）+ `engine.py`（`max_retries`、`DUPLICATE_ERROR_FINGERPRINT`、`token_budget`） | Gate 1/2 在本地子进程执行，尚未升级为 Docker `--network=none` 容器级沙箱；Gate 3 跨模块回归与 Gate 5 预发灰度发布未在 MVP 中部署 |
+| **第 5 章 · 评估体系与误修复率控制** | `state.py` & `report.json` 自动落盘每轮门禁通过率、失败指纹、耗时与 Token/费用；只读测试防篡改拦截“删测试作弊” | 尚未接入变异测试（Mutation Testing）与长期多需求误修复率统计看板 |
+| **第 6 章 · 成本与排期（80 万/年）** | `llm_client.py` 按 DeepSeek 官方北京时间峰谷费率 + 缓存命中实时核算人民币费用（双场景实测合计 ¥0.2216） | 仅验证单工具单位 Token 成本，未经过 180 个/年真实复杂需求的长周期账单验证 |
+| **第 7 章 · 风险与红线（人审 / 零生产权限）** | 沙箱无生产凭据、仅写特性分支 `agent/*`、Gate 1 拦截 `eval`/`os.system`/明文 `sk-`/生产库连接串、终态锁定 `AWAITING_HUMAN_REVIEW` | 静态扫描依赖 AST + 正则，未覆盖依赖供应链漏洞（SCA）与隐蔽编码绕过 |
 
 ---
 
-## 二、编排器安全与门禁单元测试实测输出
+## 二、五维度客观自评与自我批判（对应评分规则第 6 条）
+
+> [!IMPORTANT]
+> 本节严格按照题面第 6 条五个评分维度，结合真实 `deepseek-flash` 跑批中**实际暴露出来的工程短板**进行克制自评，**不虚高打分、不回避缺陷**，并给出可落地的下一阶段改进动作。
+
+### 2.1 五维度客观自评表（满分 10 分制，综合自评：7.9 / 10）
+
+| 评估维度 | 客观自评 | 做得扎实的证据（得分点） | 真实短板与扣分原因（自我批判） |
+| :--- | :---: | :--- | :--- |
+| **① 方案完整性** | **8.5 / 10** | 严格覆盖 Part A 全部 7 章与题面硬约束（20 人/6 系统/3 个月积压/6 周→2 周/80 万/12 个月），结合爱云动业务场景具象化，逻辑闭环自洽 | 对“传统行业组织变革阻力”（如现有 20 名老研发抵触、绩效考核如何与 AI 产出挂钩）着墨偏轻，偏重技术架构而略弱于组织管理细节 |
+| **② 技术可行性** | **8.0 / 10** | 放弃不可控的自由对话 Swarm，选用确定性 FSM + 国内直连 DeepSeek 官方最新 API（`deepseek-flash` 实测可用、高峰双场景总费用仅 ¥0.22），技术选型务实无幻觉 | MVP 中 `CoderAgent` 采用**整文件覆写单文件**策略，面对真实存量系统上千行遗留模块或多文件联动改造时极易漏改或爆输出 Token，距离直接改造 6 套存量老系统仍有明显鸿沟 |
+| **③ 工程落地度** | **7.5 / 10** | 自研零重框架编排器代码清晰可一条命令复现；`4/4` 安全与防作弊单测全过；真实跑通首轮自修复（`2/5→5/5`）与熔断回滚（`89c33e4`） | **实测暴露 3 个真实工程缺陷（详见 2.2 节）**：`ReporterAgent` 实际未传入 `git diff` 导致盲审、`escalation_demo` 存在无效二次重试浪费 Token、本地子进程隔离弱于容器沙箱 |
+| **④ 评估意识** | **7.5 / 10** | 建立了覆盖效率、质量、误修复率、单位需求成本的完整指标体系，并在代码层落盘 `report.json` 审计轨迹与精确峰谷人民币计费 | 误修复率（≤5%）与交付周期（6 周→2 周）目前停留在**单场景演示与纸面目标**，尚未在 MVP 中构建多样本评测基准集（Eval Benchmark）来统计跨任务的首次通过率与误修复率 |
+| **⑤ 风险与务实** | **8.0 / 10** | 80 万/年预算未盲目社招高薪算法专家，清晰拆解人力/模型/工具三类成本并附备选全额核算口径；实测验证 Agent 拒绝违背隐私脱敏红线并自动回滚 | 80 万预算中将内部抽调 Tech Lead 的基础薪资留在原部门编制，在严格独立成本中心考核下存在口径争议；且 Gate 1 正则扫描无法防住混淆代码或恶意第三方依赖引入 |
+
+### 2.2 真实 `deepseek-flash` 运行中暴露的 5 项具体缺陷与改进路径
+
+以下是复盘本次真实跑批日志（`repair_demo_20261124_151935` 与 `escalation_demo_20261124_152013`）后发现的具体工程问题：
+
+1. **缺陷 1：`ReporterAgent` 陷入“未读 Diff 的盲审”（实测日志直接佐证）**
+   - **暴露证据**：在 `repair_demo_20261124_151935/review_report.md` 第 36 行，`deepseek-flash` 扮演的 `ReporterAgent` 诚实输出警告：*“以上修复范围由门禁失败用例名称反推得出。本次摘要未读取实际代码差异，无法确认改动范围是否超出上述三处。”*
+   - **根因批判**：`mvp/orchestrator/agents.py` 的 `ReporterAgent.build_summary()` 仅传入了各轮门禁状态与 Commit SHA，遗漏了将 `git_diff` 文本注入 Prompt，导致 AI 预审退化为“看测试名字猜改动”，无法真正履行 Part A 第 5 章设计的“异构反作弊 Diff 审计”职责。
+   - **改进方向**：在 `v1.1` 将截断后的 `git_diff` 直接喂给 `ReporterAgent`，强制其逐条核对“是否引入未声明依赖 / 是否存在针对测试样本的硬编码特判”。
+2. **缺陷 2：`escalation_demo` 出现无效重试与“过度防御代码膨胀”**
+   - **暴露证据**：`escalation_demo` 实测耗时 **86.23s**、消耗 **24,651 Tokens（¥0.1488）**。其实 `deepseek-flash` 在 Attempt #1 就已精准识别出“只读测试要求明文手机号与隐私红线存在不可调和冲突”，但因编排协议强制要求 `CoderAgent` 必须输出一个 ` ```python``` ` 代码块，模型被迫在 Attempt #1 和 #2 两次写入了需求文档并未要求的冗余代码（如 `ComplianceConflictError`、`detect_acceptance_conflict`），白跑了一整轮才靠 `DUPLICATE_ERROR_FINGERPRINT` 熔断回滚。
+   - **改进方向**：引入显式协议标签（如 `DECISION: ESCALATE_SPEC_CONFLICT`），并将 Attempt #0 的基线错误指纹直接纳入去重集合，使明确不可自愈的冲突在 **Attempt #1 即刻熔断**，可减少 50% 以上无效 Token 消耗与等待耗时。
+3. **缺陷 3：单文件整量覆写难以直接承接存量 6 系统大仓库**
+   - **根因批判**：当前 MVP 针对约 150~300 行的独立脚本整文件重写表现稳定，但面对传统企业存量系统的千行遗留文件或多文件调用链，整文件覆写不仅 Output Token 成本飙升（输出单价是输入的 4 倍），还极易在重写过程中静默丢失历史边界逻辑。
+   - **改进方向**：升级为基于 Search/Replace 块或标准 Unified Diff 的局部补丁应用器（Patch Applier），并限制单次 PR 净增行数上限。
+4. **缺陷 4：安全门禁与沙箱隔离尚未达到生产级纵深防御**
+   - **根因批判**：当前沙箱是宿主机同进程树下的临时目录 + 子进程 `pytest`，虽然未注入生产凭据，但若恶意或幻觉代码尝试读写宿主机其他目录或发起外网请求，本地子进程缺乏 OS 级隔离；Gate 1 仅靠静态 AST + 关键字正则，容易被反射（`getattr`）或编码字符串绕过。
+   - **改进方向**：生产落地必须迁入无外网权限的只读根文件系统容器（`docker run --network=none --read-only`），并集成 `Semgrep` / `Bandit` / 私有 PyPI 白名单锁定。
+5. **缺陷 5：缺少自动化多样本评测集（Eval Suite），单次通过不等于统计稳健**
+   - **根因批判**：目前 `repair_demo` 与 `escalation_demo` 仅是 2 个确定性演示场景，虽然验证了机制闭环，但不能仅凭 1 次 `5/5` 通过就宣称达到方案中的“首次通过率 ≥ 80%、误修复率 ≤ 5%”。
+   - **改进方向**：在 Phase 1（M1-M2）落地前，应沉淀至少 20~30 个脱敏历史工单作为固定评测基准集，在切换模型或改动 Prompt 时跑批回归，用统计分布而非单次 Demo 证明能力提升。
+
+---
+
+## 三、编排器安全与门禁单元测试实测输出
 
 ### 执行命令
 
@@ -48,7 +93,7 @@ mvp/tests/test_orchestrator.py::test_escalation_demo_trips_circuit_breaker_and_r
 
 ---
 
-## 三、真实 DeepSeek API（`deepseek-flash`）端到端实测日志
+## 四、真实 DeepSeek API（`deepseek-flash`）端到端实测日志
 
 ### 模型规范核对
 
@@ -100,9 +145,9 @@ python mvp/run_pipeline.py --scenario all --provider deepseek
 
 ---
 
-## 四、失败响应与兜底记录详析（实测摘录）
+## 五、失败响应与兜底记录详析（实测摘录）
 
-### 4.1 场景一（`repair_demo`）：基线失败 → `deepseek-flash` 首轮精准修复 → 进入人工 Review
+### 5.1 场景一（`repair_demo`）：基线失败 → `deepseek-flash` 首轮精准修复 → 进入人工 Review
 
 1. **Attempt #0 基线测试拦截（2 通过、3 故意失败，指纹 `11caff28b38b`）：**
    - `PASS`: `test_baseline_photographer_and_checkpoint_aggregation_passes`
@@ -120,7 +165,7 @@ python mvp/run_pipeline.py --scenario all --provider deepseek
    - Gate 2（只读隔离 `pytest`）：**5/5 PASS**
    - `ReporterAgent` 生成 `review_report.md`（列出 8 项人工核查清单并附完整 `git diff`），明确标注**“未合并、未部署”**，终态锁定 `AWAITING_HUMAN_REVIEW`。
 
-### 4.2 场景二（`escalation_demo`）：隐私合规与测试冲突 → 拒绝妥协 → 熔断回滚上报
+### 5.2 场景二（`escalation_demo`）：隐私合规与测试冲突 → 拒绝妥协 → 熔断回滚上报
 
 1. **冲突场景**：只读遗留测试 `test_legacy_unmasked_phone_conflicts_with_privacy_policy` 断言导出明文手机号 `13987654321`，与需求中的隐私脱敏红线正面冲突。
 2. **CoderAgent（`deepseek-flash`）真实响应原文（Attempt #1 & #2）：**
@@ -142,7 +187,7 @@ python mvp/run_pipeline.py --scenario all --provider deepseek
 
 ---
 
-## 五、实测 Token 与人民币消耗账单（对应提交规则第 4 条）
+## 六、实测 Token 与人民币消耗账单（对应提交规则第 4 条）
 
 计费依据：DeepSeek 官方 API 文档（`api-docs.deepseek.com`）北京时间高峰时段（工作日 9:00-12:00 / 14:00-18:00）`deepseek-flash` 费率——输入缓存命中 ¥0.04/百万 Tokens、未命中 ¥2.00/百万 Tokens、输出 ¥8.00/百万 Tokens（空闲时段统享 5 折）。
 
@@ -158,7 +203,7 @@ python mvp/run_pipeline.py --scenario all --provider deepseek
 
 ---
 
-## 六、公开资料与开源工具引用清单（对应提交规则第 3 条）
+## 七、公开资料与开源工具引用清单（对应提交规则第 3 条）
 
 1. **DeepSeek API 官方文档、模型规范与峰谷计费标准**：[https://api-docs.deepseek.com/](https://api-docs.deepseek.com/)
 2. **Anthropic Engineering — Building Effective Agents**：[https://www.anthropic.com/engineering/building-effective-agents](https://www.anthropic.com/engineering/building-effective-agents)
