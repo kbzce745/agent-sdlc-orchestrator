@@ -135,13 +135,51 @@ python -m pytest -v mvp/tests/
 
 ---
 
-## 六、仓库导航
+## 六、代码目录与仓库导航
+
+```txt
+agent-sdlc-orchestrator/
+├── README.md                                  # 项目主文档（架构、适用场景、量化指标、迭代计划与快速开始）
+├── EVIDENCE.md                                # 方案/MVP 对应边界表、五维度自评与批判、DeepSeek 实测日志与费用账单
+├── CONTRIBUTING.md                            # 开源贡献指南（Good First Issues 与 PR 规范）
+├── LICENSE                                    # MIT 开源协议
+├── .gitignore                                 # Git 忽略规则（自动排除 .env、runs/ 等敏感与临时产物）
+├── docs/
+│   └── AI研发团队组建方案.md                    # 完整 7 章企业级 AI 研发团队落地方案
+└── mvp/                                       # 最小可运行 Agent 研发流水线源码
+    ├── README.md                              # MVP 环境、依赖、一条命令运行与消耗说明
+    ├── requirements.txt                       # 极简 Python 依赖清单
+    ├── .env.example                           # API Key 配置模板（本地使用时复制为 .env）
+    ├── run_pipeline.py                        # 一条命令总入口 CLI
+    ├── orchestrator/                          # 核心编排引擎（自研确定性 FSM）
+    │   ├── __init__.py
+    │   ├── engine.py                          # 有限状态机编排器（重试上限、错误指纹熔断、Token 预算、回滚）
+    │   ├── agents.py                          # 角色分离 Agent（SpecAnalyzer / Coder / Reporter）
+    │   ├── quality_gate.py                    # Gate 1 静态/安全/防作弊扫描 + Gate 2 只读隔离 pytest
+    │   ├── git_sandbox.py                     # 独立 Git 沙箱、特性分支、Diff 导出与自动回滚
+    │   ├── llm_client.py                      # 多后端统一客户端（DeepSeek 峰谷计费 / OpenAI / Ollama / Mock）
+    │   └── state.py                           # Pydantic v2 状态与审计报告模型
+    ├── scenarios/                             # 体育赛事影像巡检双演示场景
+    │   ├── repair_demo/                       # 场景 1：基线 2/5 → 首轮自动修复 5/5 → AWAITING_HUMAN_REVIEW
+    │   │   ├── requirements.md                # 需求与隐私合规规格书
+    │   │   ├── src/race_media_inspector.py    # 含初始缺陷的基线代码
+    │   │   └── tests/test_inspector.py        # 只读隔离验收测试（2 通过 + 3 故意失败）
+    │   └── escalation_demo/                   # 场景 2：隐私红线冲突 → 重复指纹熔断 → Git 回滚上报
+    │       ├── requirements.md                # 隐私合规红线规格书
+    │       ├── src/race_media_inspector.py    # 合规基线代码
+    │       └── tests/test_inspector.py        # 只读验收测试（含与合规冲突的遗留断言）
+    └── tests/
+        └── test_orchestrator.py               # 编排器安全与门禁单元测试（4/4）
+```
+
+> [!NOTE]
+> 运行流水线后会在本地 `mvp/runs/<scenario>_<timestamp>/` 动态生成隔离沙箱产物（`pipeline.log`、`report.json`、`review_report.md`），该目录与 `mvp/.env` 均已配置在 `.gitignore` 中，避免敏感密钥与临时运行数据入库。
 
 | 路径 | 内容说明 |
 | :--- | :--- |
 | [docs/AI研发团队组建方案.md](docs/AI研发团队组建方案.md) | 完整 7 章企业级 AI 研发团队落地蓝图（角色分工、架构取舍、6 系统知识工程、6 级门禁、误修复率评估、80 万/年精算与 12 个月里程碑） |
 | [mvp/](mvp/) | 自研 FSM 编排引擎源码、爱云动双场景用例、安全与防作弊单元测试及详细运行指南（见 [mvp/README.md](mvp/README.md)） |
-| [EVIDENCE.md](EVIDENCE.md) | 方案与 MVP 对应关系表、真实 `deepseek-flash` 运行日志、失败修复与熔断回滚记录、精确 Token/人民币账单及引用清单 |
+| [EVIDENCE.md](EVIDENCE.md) | 方案与 MVP 对应边界表、五维度客观自评与自我批判、真实 `deepseek-flash` 运行日志、精确 Token/人民币账单及引用清单 |
 
 ---
 
