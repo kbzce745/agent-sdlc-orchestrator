@@ -1,11 +1,3 @@
----
-category: 招聘数据
-subcategory: 笔试
-type: 笔试题
-date: 2026-11-12
-status: v1.0
----
-
 # B11 · 组建 AI 研发团队
 
 > 通用规则见文末。本题考察：Agent 编排、流水线、质量门禁。

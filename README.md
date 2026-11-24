@@ -142,7 +142,6 @@ python -m pytest -v mvp/tests/
 | [docs/AI研发团队组建方案.md](docs/AI研发团队组建方案.md) | 完整 7 章企业级 AI 研发团队落地蓝图（角色分工、架构取舍、6 系统知识工程、6 级门禁、误修复率评估、80 万/年精算与 12 个月里程碑） |
 | [mvp/](mvp/) | 自研 FSM 编排引擎源码、爱云动双场景用例、安全与防作弊单元测试及详细运行指南（见 [mvp/README.md](mvp/README.md)） |
 | [EVIDENCE.md](EVIDENCE.md) | 方案与 MVP 对应关系表、真实 `deepseek-flash` 运行日志、失败修复与熔断回滚记录、精确 Token/人民币账单及引用清单 |
-| [docs/录屏演示脚本.md](docs/录屏演示脚本.md) | ≤4 分 30 秒结构化架构讲解与终端实操演示分镜脚本 |
 
 ---
 
